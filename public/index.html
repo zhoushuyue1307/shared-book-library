@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>共享数字图书库</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#fff; --line:#e3e6ec; --text:#1c2330;
+    --muted:#6b7484; --accent:#2f6ef0; --ok:#128a5b; --warn:#b8730a;
+    --err:#d33a3a; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text); min-height:100vh;
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:16px 28px; background:#fff; border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:10; flex-wrap:wrap;
+  }
+  header h1{margin:0; font-size:19px; letter-spacing:.3px; display:flex; align-items:baseline; gap:10px}
+  header h1 small{font-weight:400; color:var(--muted); font-size:13px}
+  .user{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted)}
+  input,button,select{font:inherit}
+  input[type=text],input[type=number]{
+    padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff;
+    color:var(--text); outline:none;
+  }
+  input:focus,select:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(47,110,240,.12)}
+  select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);cursor:pointer}
+  button{
+    padding:7px 14px; border:1px solid var(--line); background:#fff; border-radius:8px;
+    cursor:pointer; transition:.12s; white-space:nowrap; color:var(--text);
+  }
+  button:hover:not(:disabled){border-color:#c8cdd8; background:#fafbfd}
+  button:active:not(:disabled){transform:translateY(1px)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button.primary:hover:not(:disabled){background:#255fd6}
+  button.ghost{color:var(--muted)}
+  button.tool{border-color:#dfe3ea; font-size:13px; padding:6px 12px; color:#48505f}
+
+  main{display:grid; grid-template-columns:1fr 330px; gap:20px; padding:22px 28px 12px; align-items:start}
+  @media (max-width:900px){ main{grid-template-columns:1fr} }
+
+  .toolbar{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap}
+  .toolbar input[type=text]{flex:1; min-width:160px}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(265px,1fr)); gap:14px}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px; display:flex; flex-direction:column; gap:4px; transition:.15s;
+  }
+  .card:hover{box-shadow:0 4px 18px rgba(20,30,60,.06)}
+  .card.out{background:#fcfcfd}
+  .card-head{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  .card-head h3{margin:0; font-size:16px; line-height:1.35}
+  .ver{
+    font:11px/1 ui-monospace,Menlo,monospace; color:var(--muted);
+    background:#eef1f7; padding:3px 6px; border-radius:6px; flex:none;
+  }
+  .author{margin:0; color:var(--muted); font-size:13px}
+  .stock{margin:6px 0 0; font-size:14px}
+  .stock b{font-size:17px; color:var(--accent)}
+  .sub{margin:3px 0 0; font-size:12.5px; color:#6b7484}
+  .sub.warnline{color:var(--warn)}
+  .note{margin:6px 0 0; font-size:12.5px; color:#5b6472; background:#f3f5fa; border-radius:7px; padding:4px 9px}
+  .actions{display:flex; gap:6px; margin-top:auto; padding-top:12px; flex-wrap:wrap}
+  .actions button{font-size:13px; padding:6px 11px}
+
+  aside{display:flex; flex-direction:column; gap:14px; position:sticky; top:84px}
+  .panel{background:#fff; border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px}
+  .panel h2{margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.9px; color:var(--muted); font-weight:600}
+  #logs{list-style:none; margin:0; padding:0; max-height:330px; overflow:auto; font-size:12.5px}
+  #logs li{padding:5px 0; border-bottom:1px dashed #eef0f4; display:flex; gap:8px}
+  #logs li:last-child{border-bottom:0}
+  #logs .t{color:#9aa2b1; font:11px/1.75 ui-monospace,Menlo,monospace; flex:none}
+  #logs .ok{color:var(--ok)} #logs .warn{color:var(--warn)}
+  #logs .err{color:var(--err); font-weight:600} #logs .info{color:var(--text)}
+  #queue{list-style:none; margin:0; padding:0; font-size:13px}
+  #queue li{padding:4px 0; color:var(--muted)}
+  #queue li b{color:var(--text)}
+  .empty{color:#a5adba; font-size:13px}
+
+  footer{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:18px 28px 26px; color:#9aa2b1; font-size:12px; flex-wrap:wrap;
+  }
+  footer .linkbtn{
+    background:none; border:0; color:#9aa2b1; padding:0; font-size:12px;
+    text-decoration:underline; text-underline-offset:3px; cursor:pointer;
+  }
+  footer .linkbtn:hover{color:var(--muted)}
+
+  dialog{border:0; border-radius:14px; padding:0; width:460px; max-width:92vw; box-shadow:0 24px 70px rgba(15,25,50,.3)}
+  dialog::backdrop{background:rgba(18,26,44,.4)}
+  dialog form{padding:20px 22px; display:flex; flex-direction:column; gap:11px; margin:0}
+  dialog h2{margin:0 0 2px; font-size:16px}
+  dialog label{display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--muted)}
+  dialog input,dialog select{width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; color:var(--text); background:#fff}
+  .verline{margin:0; font-size:12px; color:#8b93a2}
+  .dlg-actions{display:flex; gap:8px; justify-content:flex-end; margin-top:6px}
+  .race-out{
+    margin:0; padding:12px 14px; background:#f6f8fb; border:1px solid #e6eaf1; border-radius:9px;
+    font:12.5px/1.75 ui-monospace,Menlo,monospace; color:#333c4c; white-space:pre-wrap; display:none;
+  }
+  .race-out.show{display:block}
+
+  .toast{
+    position:fixed; left:50%; bottom:28px; transform:translate(-50%,20px);
+    background:#1c2330; color:#fff; padding:10px 18px; border-radius:10px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:.22s; max-width:80vw;
+    box-shadow:0 8px 26px rgba(0,0,0,.22);
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+  .toast.ok{background:#0f7d52}
+  .toast.err{background:#c22f2f}
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📚 共享数字图书库 <small>共享书目 · 借还 · 预约 · 版本控制</small></h1>
+  <div class="user">
+    <label for="member">当前用户</label>
+    <input id="member" type="text" value="张三" style="width:96px">
+    <button id="raceBtn" class="tool">并发自检</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="toolbar">
+      <input id="search" type="text" placeholder="搜索书名或作者…">
+      <select id="statusFilter">
+        <option value="all">全部状态</option>
+        <option value="available">可借</option>
+        <option value="out">已借完</option>
+        <option value="reserved">已预留</option>
+      </select>
+      <input id="title" type="text" placeholder="书名" style="width:130px">
+      <input id="author" type="text" placeholder="作者" style="width:110px">
+      <input id="copies" type="number" min="1" max="99" value="1" style="width:68px">
+      <button id="addBtn" class="primary">新增图书</button>
+    </div>
+
+    <div id="books" class="grid"></div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <h2>操作日志</h2>
+      <ol id="logs"></ol>
+    </div>
+    <div class="panel">
+      <h2>预约队列</h2>
+      <ul id="queue"></ul>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span>共享数字图书库 · 课程项目（基于 MIT 协议的 bookmarker 扩展）</span>
+  <button id="resetBtn" class="linkbtn">恢复示例数据</button>
+</footer>
+
+<!-- 编辑图书 -->
+<dialog id="editDialog">
+  <form method="dialog">
+    <h2 id="editHeading">编辑图书</h2>
+    <label>书名 <input id="eTitle" type="text"></label>
+    <label>作者 <input id="eAuthor" type="text"></label>
+    <label>副本数 <input id="eCopies" type="number" min="1" max="99"></label>
+    <label>备注 <input id="eNote" type="text" placeholder="选填，例如：2 楼书架 / 有缺页"></label>
+    <p class="verline">本次保存基于版本 <b id="eVersion">v1</b>，若期间有人改过则拒绝保存</p>
+    <p class="verline" id="editWarn" style="color:#d33a3a"></p>
+    <div class="dlg-actions">
+      <button type="button" id="eCancel">取消</button>
+      <button type="button" id="eSave" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 并发自检 -->
+<dialog id="raceDialog">
+  <form method="dialog">
+    <h2>并发借书自检</h2>
+    <p class="verline">
+      两位用户以同一版本号同时借同一本书。库存充足时两人都应借到；只剩一本时只有一人借到，另一人进入预约队列。
+    </p>
+    <label>选择图书 <select id="raceBook"></select></label>
+    <pre id="raceOut" class="race-out"></pre>
+    <div class="dlg-actions">
+      <button type="button" id="raceCancel">关闭</button>
+      <button type="button" id="raceRun" class="primary">运行</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+let state = { books: [], reservations: [], logs: [] };
+let editing = { id: null, version: null };
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function api(path, body, method) {
+  const m = method || (body === undefined ? 'GET' : 'POST');
+  const opts = { method: m };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  let data = {};
+  try { data = await res.json(); } catch { /* 空响应 */ }
+  return { status: res.status, data };
+}
+
+let toastTimer;
+function toast(msg, kind) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (kind || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3400);
+}
+
+async function refresh() {
+  const { data } = await api('/api/state');
+  state = data;
+  render();
+}
+
+const currentMember = () => ($('member').value.trim() || '匿名');
+const statusOf = (b) => (b.reservedFor ? 'reserved' : b.available > 0 ? 'available' : 'out');
+
+/* ---------- 渲染 ---------- */
+
+function render() {
+  const keyword = $('search').value.trim().toLowerCase();
+  const status = $('statusFilter').value;
+
+  const list = state.books.filter((b) => {
+    const kwOk = !keyword ||
+      b.title.toLowerCase().includes(keyword) ||
+      b.author.toLowerCase().includes(keyword);
+    return kwOk && (status === 'all' || statusOf(b) === status);
+  });
+
+  $('books').innerHTML = list.length
+    ? list.map(cardHtml).join('')
+    : '<p class="empty">没有符合条件的图书</p>';
+
+  $('logs').innerHTML = state.logs.length
+    ? state.logs.map((l) =>
+        `<li><span class="t">${esc(l.time)}</span><span class="${esc(l.type)}">${esc(l.msg)}</span></li>`).join('')
+    : '<li class="empty">暂无记录</li>';
+
+  const byBook = new Map();
+  state.reservations.forEach((r) => {
+    if (!byBook.has(r.bookId)) byBook.set(r.bookId, []);
+    byBook.get(r.bookId).push(r.member);
+  });
+
+  $('queue').innerHTML = byBook.size
+    ? [...byBook.entries()].map(([bookId, members]) => {
+        const b = state.books.find((x) => x.id === bookId);
+        return `<li><b>《${esc(b ? b.title : '?')}》</b>：${members.map((m, i) => `${i + 1}. ${esc(m)}`).join(' → ')}</li>`;
+      }).join('')
+    : '<li class="empty">队列为空</li>';
+}
+
+function cardHtml(b) {
+  const holders = (b.borrowers || []).map((x) => x.member);
+  const holderText = holders.length
+    ? `借出 ${holders.length} 本：${holders.slice(0, 3).join('、')}${holders.length > 3 ? ' 等' : ''}`
+    : '';
+  return `
+  <article class="card ${b.available === 0 && !b.reservedFor ? 'out' : ''}" data-id="${b.id}" data-version="${b.version}">
+    <div class="card-head">
+      <h3>${esc(b.title)}</h3>
+      <span class="ver" title="记录版本号，借 / 还 / 编辑都会校验">v${b.version}</span>
+    </div>
+    <p class="author">${esc(b.author)}</p>
+    <p class="stock">可借 <b>${b.available}</b> / 共 ${b.copies}</p>
+    ${holderText ? `<p class="sub">${esc(holderText)}</p>` : ''}
+    ${b.reservedFor ? `<p class="sub warnline">🔒 已预留给 ${esc(b.reservedFor)}</p>` : ''}
+    ${b.note ? `<p class="note">📝 ${esc(b.note)}</p>` : ''}
+    <div class="actions">
+      <button data-act="borrow">借书</button>
+      <button data-act="return" class="ghost">还书</button>
+      <button data-act="edit" class="ghost">编辑</button>
+    </div>
+  </article>`;
+}
+
+/* ---------- 借 / 还：冲突时用最新版本自动重试一次 ---------- */
+
+async function act(id, type) {
+  const book = state.books.find((b) => b.id === id);
+  if (!book) return;
+  let r = await api(`/api/books/${id}/${type}`, { member: currentMember(), version: book.version });
+  if (r.status === 409 && r.data.book) {
+    // 别人刚好改过：拿到最新版本再试一次，用户不用手动刷新
+    r = await api(`/api/books/${id}/${type}`, { member: currentMember(), version: r.data.book.version });
+  }
+  toast(r.data.message || '操作完成', r.data.ok ? 'ok' : 'err');
+  await refresh();
+}
+
+$('books').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const card = btn.closest('.card');
+  const id = Number(card.dataset.id);
+
+  if (btn.dataset.act === 'edit') {
+    const book = state.books.find((x) => x.id === id);
+    if (book) openEdit(book);
+    return;
+  }
+
+  btn.disabled = true;
+  try { await act(id, btn.dataset.act); }
+  finally { btn.disabled = false; }
+});
+
+/* ---------- 编辑（BL-4 冲突 / BL-8 备注） ---------- */
+
+function openEdit(book) {
+  editing = { id: book.id, version: book.version };
+  $('editHeading').textContent = `编辑《${book.title}》`;
+  $('eTitle').value = book.title;
+  $('eAuthor').value = book.author;
+  $('eCopies').value = book.copies;
+  $('eNote').value = book.note || '';
+  $('eVersion').textContent = 'v' + book.version;
+  $('editWarn').textContent = '';
+  $('eSave').disabled = false;
+  $('editDialog').showModal();
+}
+
+$('eSave').addEventListener('click', async () => {
+  const r = await api(`/api/books/${editing.id}`, {
+    title: $('eTitle').value.trim(),
+    author: $('eAuthor').value.trim(),
+    copies: Number($('eCopies').value),
+    note: $('eNote').value.trim(),
+    member: currentMember(),
+    version: editing.version,
+  }, 'PATCH');
+
+  if (r.status === 409) {
+    // 编辑不自动重试：必须先看到别人的修改，否则就是覆盖
+    $('editWarn').textContent = '这条记录已被其他人修改，请关闭后重新打开再编辑。';
+    $('eSave').disabled = true;
+    toast('保存被拒绝：版本冲突', 'err');
+  } else {
+    toast(r.data.message, r.data.ok ? 'ok' : 'err');
+    if (r.data.ok) $('editDialog').close();
+  }
+  await refresh();
+});
+
+$('eCancel').addEventListener('click', () => $('editDialog').close());
+
+/* ---------- 并发自检 ---------- */
+
+$('raceBtn').addEventListener('click', () => {
+  $('raceBook').innerHTML = state.books
+    .map((b) => `<option value="${b.id}">《${esc(b.title)}》 可借 ${b.available}/${b.copies}</option>`)
+    .join('');
+  $('raceOut').textContent = '';
+  $('raceOut').classList.remove('show');
+  $('raceDialog').showModal();
+});
+
+$('raceCancel').addEventListener('click', () => $('raceDialog').close());
+
+$('raceRun').addEventListener('click', () => runRace(Number($('raceBook').value)));
+
+async function borrowOnce(id, member, version) {
+  const r = await api(`/api/books/${id}/borrow`, { member, version });
+  if (r.status === 409 && r.data.book) {
+    // 版本过期 → 拿最新版本重试（等价于"刷新后重试"，只是自动完成）
+    const r2 = await api(`/api/books/${id}/borrow`, { member, version: r.data.book.version });
+    return { ...r2, retried: true };
+  }
+  return r;
+}
+
+async function runRace(id) {
+  const before = state.books.find((b) => b.id === id);
+  const version = before.version;
+
+  const [x, y] = await Promise.all([
+    borrowOnce(id, '张三', version),
+    borrowOnce(id, '李四', version),
+  ]);
+
+  const out = [];
+  const line = (who, r) => {
+    const mark = r.data.ok ? '✅' : '⛔';
+    out.push(`${who} ${mark} ${r.data.message}` + (r.retried ? '（版本冲突后自动重试）' : ''));
+  };
+  line('张三', x);
+  line('李四', y);
+
+  await refresh();
+  // 刷新下拉里的库存标签，避免显示运行前的旧数字
+  $('raceBook').innerHTML = state.books
+    .map((b) => `<option value="${b.id}" ${b.id === id ? 'selected' : ''}>《${esc(b.title)}》 可借 ${b.available}/${b.copies}</option>`)
+    .join('');
+  const after = state.books.find((b) => b.id === id);
+  out.push('');
+  out.push(`库存 ${before.available} → ${after.available} / 共 ${after.copies}，版本 v${before.version} → v${after.version}`);
+
+  $('raceOut').textContent = out.join('\n');
+  $('raceOut').classList.add('show');
+  toast('自检完成，结果见对话框', 'ok');
+}
+
+/* ---------- 其它 ---------- */
+
+$('addBtn').addEventListener('click', async () => {
+  const title = $('title').value.trim();
+  const author = $('author').value.trim();
+  const copies = Number($('copies').value);
+  if (!title || !author) return toast('请填写书名和作者', 'err');
+
+  const r = await api('/api/books', { title, author, copies });
+  toast(r.data.message, r.data.ok ? 'ok' : 'err');
+  if (r.data.ok) {
+    $('title').value = '';
+    $('author').value = '';
+    $('copies').value = 1;
+  }
+  await refresh();
+});
+
+$('search').addEventListener('input', render);
+$('statusFilter').addEventListener('change', render);
+
+$('resetBtn').addEventListener('click', async () => {
+  await api('/api/reset', {});
+  await refresh();
+  toast('已恢复示例数据', 'ok');
+});
+
+refresh().then(() => {
+  const params = new URLSearchParams(location.search);
+  // 支持 /?q=关键词&status=available 直接打开带筛选的视图
+  if (params.get('q')) $('search').value = params.get('q');
+  if (params.get('status')) $('statusFilter').value = params.get('status');
+  if (params.get('q') || params.get('status')) render();
+  if (params.get('auto') === 'race') {
+    const id = Number(params.get('id') || 1);
+    setTimeout(async () => {
+      $('raceBook').innerHTML = state.books
+        .map((b) => `<option value="${b.id}" ${b.id === id ? 'selected' : ''}>《${esc(b.title)}》 可借 ${b.available}/${b.copies}</option>`)
+        .join('');
+      $('raceDialog').showModal();
+      await runRace(id);
+    }, 200);
+  }
+});
+</script>
+</body>
+</html>
