@@ -146,7 +146,12 @@ function borrow(bookId, member, version) {
   addLog(`${member} 预约《${b.title}》，排在第 ${queueOf(bookId).length} 位`, 'warn');
   return {
     status: 200,
-    payload: { ok: true, message: `库存为 0，已加入预约队列（第 ${queueOf(bookId).length} 位）`, book: publicBook(b) },
+    payload: {
+      ok: true,
+      code: 'OUT_OF_STOCK',
+      message: `库存为 0，已加入预约队列（第 ${queueOf(bookId).length} 位）`,
+      book: publicBook(b),
+    },
   };
 }
 

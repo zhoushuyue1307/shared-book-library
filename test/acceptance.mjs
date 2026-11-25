@@ -34,6 +34,17 @@ const after2 = await book(2);
 const borrowedCount = after2.borrowers.length;
 check('BL-2 10 个并发借 1 本，库存不为负', after2.available >= 0 && borrowedCount === 1, `可借=${after2.available}，借出人数=${borrowedCount}`);
 
+// BL-2b 零库存借书：库存与版本都不变
+await post('/api/reset', {});
+const z0 = await book(3);
+const zr = await post('/api/books/3/borrow', { member: 'queue-check', version: z0.version });
+const z1 = await book(3);
+check(
+  'BL-2 zero-stock borrow keeps stock unchanged',
+  zr.data.code === 'OUT_OF_STOCK' && z1.available === 0 && z1.version === z0.version,
+  `available=${z1.available}, version v${z0.version}->v${z1.version}`
+);
+
 // BL-3 最后一本：恰好一个借到
 await post('/api/reset', {});
 const b3 = await book(2); // 1 本
