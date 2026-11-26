@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Book detail · Shared Digital Book Library</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>📚 Shared Digital Book Library <small>Shared catalogue · Borrow &amp; return · Reservations · Version control</small></h1>
+  <nav class="nav">
+    <a href="/">Catalogue</a>
+    <a href="/me.html">My loans</a>
+    <a href="/stats.html">Dashboard</a>
+  </nav>
+  <div class="user">
+    <label for="member">Current user</label>
+    <input id="member" type="text" style="width:96px">
+  </div>
+</header>
+
+<main class="wide">
+  <p class="crumbs"><a href="/">← Back to catalogue</a></p>
+
+  <div class="detail-grid">
+    <div>
+      <section class="big-card">
+        <div class="card-head">
+          <h2 id="bTitle">Loading…</h2>
+          <span class="ver" id="bVersion"></span>
+        </div>
+        <p class="byline" id="bAuthor"></p>
+        <div class="meta">
+          <div>Available <b id="bAvail">–</b></div>
+          <div>Copies <b id="bCopies">–</b></div>
+          <div>Queue <b id="bQueue">–</b></div>
+          <div>Rating <b id="bRating">–</b></div>
+        </div>
+        <div class="tags" id="bTags"></div>
+        <p class="note" id="bNote" style="display:none"></p>
+        <p class="sub warnline" id="bReserved" style="display:none"></p>
+        <ul class="holders" id="bHolders"></ul>
+        <div class="actions-lg">
+          <button id="btnBorrow" class="primary">Borrow</button>
+          <button id="btnReturn" class="ghost">Return</button>
+        </div>
+      </section>
+
+      <section class="big-card" style="margin-top:16px">
+        <h2 style="font-size:16px">Borrowing history</h2>
+        <ol class="timeline" id="history"></ol>
+      </section>
+    </div>
+
+    <aside style="display:flex; flex-direction:column; gap:14px">
+      <div class="panel">
+        <h2>Reservation queue</h2>
+        <ul id="queue" style="list-style:none; margin:0; padding:0; font-size:13px"></ul>
+      </div>
+
+      <div class="panel">
+        <h2>Reader ratings</h2>
+        <div class="rating" style="margin:0 0 6px">
+          <span class="stars big" id="avgStars">☆☆☆☆☆</span>
+          <span id="avgText">No ratings yet</span>
+        </div>
+        <div class="review-form">
+          <div class="star-picker" id="picker">
+            <button type="button" data-v="1">★</button>
+            <button type="button" data-v="2">★</button>
+            <button type="button" data-v="3">★</button>
+            <button type="button" data-v="4">★</button>
+            <button type="button" data-v="5">★</button>
+          </div>
+          <input id="comment" type="text" maxlength="120" placeholder="Short review (optional)">
+          <button id="btnReview" class="primary">Post</button>
+        </div>
+        <div id="reviews"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer>
+  <span>Shared Digital Book Library · course project (extends the MIT-licensed bookmarker)</span>
+  <a href="/" style="color:#9aa2b1; font-size:12px">Back to catalogue</a>
+</footer>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const bookId = Number(new URLSearchParams(location.search).get('id') || 1);
+let data = null;
+let picked = 0;
+
+const TYPE_TEXT = { add: 'Added', borrow: 'Borrowed', return: 'Returned', edit: 'Edited' };
+
+async function load() {
+  const r = await api(`/api/books/${bookId}`);
+  if (r.status !== 200) {
+    toast(r.data.message || 'Book not found', 'err');
+    setTimeout(() => { location.href = '/'; }, 900);
+    return;
+  }
+  data = r.data;
+  render();
+}
+
+function render() {
+  const b = data.book;
+  document.title = `${b.title} · Shared Digital Book Library`;
+
+  $('bTitle').textContent = b.title;
+  $('bVersion').textContent = 'v' + b.version;
+  $('bVersion').title = 'Record version; checked on every borrow / return / edit';
+  $('bAuthor').textContent = b.author;
+  $('bAvail').textContent = `${b.available}/${b.copies}`;
+  $('bCopies').textContent = b.copies;
+  $('bQueue').textContent = b.queueCount;
+  $('bRating').textContent = b.reviewCount ? `${b.avgRating}（${b.reviewCount}）` : '—';
+
+  $('bTags').innerHTML = (b.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join('');
+
+  const note = $('bNote');
+  note.style.display = b.note ? 'block' : 'none';
+  note.textContent = b.note ? '📝 ' + b.note : '';
+
+  const res = $('bReserved');
+  res.style.display = b.reservedFor ? 'block' : 'none';
+  res.textContent = b.reservedFor ? `🔒 Reserved for ${b.reservedFor}` : '';
+
+  $('bHolders').innerHTML = b.borrowers.length
+    ? b.borrowers.map((x) => `<li>${esc(x.member)}${x.since ? ' · ' + esc(x.since) : ''}</li>`).join('')
+    : '<li>No copies on loan</li>';
+
+  $('btnBorrow').textContent = b.available > 0 ? 'Borrow' : 'Join the queue';
+  $('btnReturn').disabled = b.borrowers.length === 0;
+  $('btnBorrow').disabled = false;
+
+  $('queue').innerHTML = data.queue.length
+    ? data.queue.map((m, i) => `<li style="padding:4px 0">${i + 1}. ${esc(m)}</li>`).join('')
+    : '<li class="empty">The queue is empty</li>';
+
+  $('history').innerHTML = data.history.length
+    ? data.history.map((h) => `
+        <li>
+          <span class="when">${esc(h.time)}</span>
+          <span class="what">${TYPE_TEXT[h.type] || h.type}${h.member ? ' · ' + esc(h.member) : ''}${h.detail ? ' · ' + esc(h.detail) : ''}</span>
+        </li>`).join('')
+    : '<li><span class="what empty-line">No records yet</span></li>';
+
+  $('avgStars').textContent = stars(b.avgRating);
+  $('avgText').textContent = b.reviewCount ? `${fmtRating(b.avgRating)}/5 · ${b.reviewCount} reviews` : 'Not rated yet';
+
+  $('reviews').innerHTML = data.reviews.length
+    ? data.reviews.map((r) => `
+        <div class="review">
+          <span class="who">${esc(r.member)}</span>
+          <div class="body">
+            <span class="stars">${stars(r.rating)}</span>
+            ${r.comment ? `<div>${esc(r.comment)}</div>` : ''}
+            <span class="when">${esc(r.time)}</span>
+          </div>
+        </div>`).join('')
+    : '<p class="empty-line" style="margin:10px 0 0">No reviews yet — write the first one.</p>';
+}
+
+async function act(type) {
+  const b = data.book;
+  let r = await api(`/api/books/${bookId}/${type}`, { member: currentMember(), version: b.version });
+  if (r.status === 409 && r.data.book) {
+    // someone else just changed it: retry once with the fresh version
+    r = await api(`/api/books/${bookId}/${type}`, { member: currentMember(), version: r.data.book.version });
+  }
+  toast(r.data.message || 'Done', r.data.ok ? 'ok' : 'err');
+  await load();
+}
+
+$('btnBorrow').addEventListener('click', () => act('borrow'));
+$('btnReturn').addEventListener('click', () => act('return'));
+
+$('picker').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-v]');
+  if (!btn) return;
+  picked = Number(btn.dataset.v);
+  [...$('picker').children].forEach((b) => b.classList.toggle('on', Number(b.dataset.v) <= picked));
+});
+
+$('btnReview').addEventListener('click', async () => {
+  if (!picked) return toast('Pick a star rating first', 'err');
+  const r = await api(`/api/books/${bookId}/reviews`, {
+    member: currentMember(),
+    rating: picked,
+    comment: $('comment').value.trim(),
+  });
+  toast(r.data.message || 'Submitted', r.data.ok ? 'ok' : 'err');
+  if (r.data.ok) {
+    $('comment').value = '';
+    picked = 0;
+    [...$('picker').children].forEach((b) => b.classList.remove('on'));
+    await load();
+  }
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Dashboard · Shared Digital Book Library</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>📚 Shared Digital Book Library <small>Shared catalogue · Borrow &amp; return · Reservations · Version control</small></h1>
+  <nav class="nav">
+    <a href="/">Catalogue</a>
+    <a href="/me.html">My loans</a>
+    <a href="/stats.html">Dashboard</a>
+  </nav>
+  <div class="user">
+    <label for="member">Current user</label>
+    <input id="member" type="text" style="width:96px">
+  </div>
+</header>
+
+<main class="wide">
+  <div class="page-head">
+    <div>
+      <p class="crumbs"><a href="/">← Back to catalogue</a></p>
+      <h1>Dashboard</h1>
+      <p class="member-hint" style="margin:6px 0 0">Refreshes every 5 seconds, or refresh manually.</p>
+    </div>
+    <button id="btnRefresh" class="ghost">Refresh now</button>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat"><span>Titles</span><b id="sBooks">–</b><small>titles</small></div>
+    <div class="stat"><span>Copies</span><b id="sCopies">–</b><small>copies</small></div>
+    <div class="stat"><span>On loan</span><b id="sOnLoan">–</b><small>copies</small></div>
+    <div class="stat"><span>Available</span><b id="sAvail">–</b><small>copies</small></div>
+  </div>
+
+  <div class="two-col" style="margin-top:18px">
+    <section class="big-card">
+      <h2 style="font-size:16px">Stock utilisation</h2>
+      <div class="rating" style="margin:10px 0 8px">
+        <span class="stars big" id="utilText" style="color:var(--accent); letter-spacing:0">0%</span>
+        <span class="member-hint">on loan / total copies</span>
+      </div>
+      <div class="bar"><i id="utilBar" style="width:0%"></i></div>
+      <p class="member-hint" style="margin-top:10px">
+        Held <b id="sHeld">–</b> · In the queue <b id="sQueue">–</b>
+      </p>
+    </section>
+
+    <section class="big-card">
+      <h2 style="font-size:16px">Recent activity</h2>
+      <ol id="sRecent" style="list-style:none; margin:10px 0 0; padding:0; font-size:12.5px"></ol>
+    </section>
+  </div>
+
+  <div class="two-col" style="margin-top:18px">
+    <section class="big-card">
+      <h2 style="font-size:16px">Most borrowed</h2>
+      <ol class="rank" id="sTop"></ol>
+    </section>
+
+    <section class="big-card">
+      <h2 style="font-size:16px">Tags</h2>
+      <div class="tags" id="sTags" style="margin-top:10px"></div>
+      <p class="member-hint" style="margin-top:12px">Use the tag dropdown next to the status filter to narrow the catalogue.</p>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <span>Shared Digital Book Library · course project (extends the MIT-licensed bookmarker)</span>
+  <a href="/me.html" style="color:#9aa2b1; font-size:12px">My loans →</a>
+</footer>
+
+<div id="toast" class="toast"></div>
+
+<script>
+async function load() {
+  const { data } = await api('/api/stats');
+  $('sBooks').textContent = data.books;
+  $('sCopies').textContent = data.copies;
+  $('sOnLoan').textContent = data.onLoan;
+  $('sAvail').textContent = data.available;
+  $('sHeld').textContent = data.held;
+  $('sQueue').textContent = data.queueLength;
+
+  $('utilText').textContent = data.utilisation + '%';
+  $('utilBar').style.width = Math.min(100, data.utilisation) + '%';
+
+  const max = Math.max(1, ...data.topBorrowed.map((b) => b.count));
+  $('sTop').innerHTML = data.topBorrowed.length
+    ? data.topBorrowed.map((b, i) => `
+        <li>
+          <span class="n">${i + 1}</span>
+          <a href="/book.html?id=${b.id}" style="color:inherit; text-decoration:none">
+            ${esc(b.title)}
+            <div class="bar" style="margin-top:4px"><i style="width:${(b.count / max) * 100}%"></i></div>
+          </a>
+          <span class="n">${b.count} times</span>
+        </li>`).join('')
+    : '<li class="empty-line">No borrowing records yet</li>';
+
+  $('sTags').innerHTML = data.tagCounts.length
+    ? data.tagCounts.map((t) => `<span class="tag">${esc(t.tag)} · ${t.count}</span>`).join('')
+    : '<span class="empty-line">No tags yet</span>';
+
+  $('sRecent').innerHTML = data.recent.length
+    ? data.recent.map((l) => `
+        <li style="padding:4px 0; border-bottom:1px dashed #eef0f4; display:flex; gap:8px">
+          <span class="n" style="color:#9aa2b1">${esc(l.time)}</span>
+          <span class="${esc(l.type)}" style="color:${l.type === 'err' ? '#d33a3a' : l.type === 'warn' ? '#b8730a' : '#4b5565'}">${esc(l.msg)}</span>
+        </li>`).join('')
+    : '<li class="empty-line">No activity yet</li>';
+}
+
+$('btnRefresh').addEventListener('click', async () => {
+  await load();
+  toast('Refreshed', 'ok');
+});
+
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

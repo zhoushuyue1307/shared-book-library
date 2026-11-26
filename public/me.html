@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>My loans · Shared Digital Book Library</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="/app.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>📚 Shared Digital Book Library <small>Shared catalogue · Borrow &amp; return · Reservations · Version control</small></h1>
+  <nav class="nav">
+    <a href="/">Catalogue</a>
+    <a href="/me.html">My loans</a>
+    <a href="/stats.html">Dashboard</a>
+  </nav>
+  <div class="user">
+    <label for="member">Current user</label>
+    <input id="member" type="text" style="width:96px">
+  </div>
+</header>
+
+<main class="wide">
+  <div class="page-head">
+    <div>
+      <p class="crumbs"><a href="/">← Back to catalogue</a></p>
+      <h1>My loans</h1>
+      <p class="member-hint" id="who" style="margin:6px 0 0"></p>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <section class="big-card">
+      <h2 style="font-size:16px">On loan</h2>
+      <div id="loans" style="margin-top:8px"></div>
+    </section>
+
+    <div style="display:flex; flex-direction:column; gap:18px">
+      <section class="big-card">
+        <h2 style="font-size:16px">In the queue</h2>
+        <div id="holds" style="margin-top:8px"></div>
+      </section>
+      <section class="big-card">
+        <h2 style="font-size:16px">My reviews</h2>
+        <div id="reviews" style="margin-top:8px"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>Shared Digital Book Library · course project (extends the MIT-licensed bookmarker)</span>
+  <a href="/stats.html" style="color:#9aa2b1; font-size:12px">See the dashboard →</a>
+</footer>
+
+<div id="toast" class="toast"></div>
+
+<script>
+async function load() {
+  const name = currentMember();
+  $('who').textContent = `Current user: ${name} (change the name in the header to switch)`;
+  const { data } = await api(`/api/members/${encodeURIComponent(name)}`);
+
+  $('loans').innerHTML = data.loans.length
+    ? data.loans.map((l) => `
+        <div class="loan-row">
+          <div class="t">
+            <b><a href="/book.html?id=${l.id}" style="color:inherit; text-decoration:none">${esc(l.title)}</a></b>
+            <span>${esc(l.author)}${l.since ? ' · since ' + esc(l.since) : ''}</span>
+          </div>
+          <button class="ghost" data-return="${l.id}" data-version="${l.version}">Return</button>
+        </div>`).join('')
+    : '<p class="empty">No loans yet — pick one from the <a href="/" style="color:#2f6ef0">Catalogue</a>.</p>';
+
+  $('holds').innerHTML = data.holds.length
+    ? data.holds.map((h) => `
+        <div class="loan-row">
+          <div class="t">
+            <b><a href="/book.html?id=${h.bookId}" style="color:inherit; text-decoration:none">${esc(h.title)}</a></b>
+            <span>#${h.position} of ${h.total} in the queue</span>
+          </div>
+        </div>`).join('')
+    : '<p class="empty">Nothing in the queue.</p>';
+
+  $('reviews').innerHTML = data.reviews.length
+    ? data.reviews.map((r) => `
+        <div class="review">
+          <div class="body">
+            <a href="/book.html?id=${r.bookId}" style="color:inherit; text-decoration:none"><b>${esc(r.title)}</b></a>
+            <span class="stars">${stars(r.rating)}</span>
+            ${r.comment ? `<div>${esc(r.comment)}</div>` : ''}
+            <span class="when">${esc(r.time)}</span>
+          </div>
+        </div>`).join('')
+    : '<p class="empty">No reviews yet.</p>';
+}
+
+$('loans').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-return]');
+  if (!btn) return;
+  const id = Number(btn.dataset.return);
+  const version = Number(btn.dataset.version);
+  btn.disabled = true;
+  let r = await api(`/api/books/${id}/return`, { member: currentMember(), version });
+  if (r.status === 409 && r.data.book) {
+    r = await api(`/api/books/${id}/return`, { member: currentMember(), version: r.data.book.version });
+  }
+  toast(r.data.message || 'Done', r.data.ok ? 'ok' : 'err');
+  await load();
+});
+
+// switching the user in the header reloads this page
+$('member').addEventListener('input', () => load());
+
+load();
+</script>
+</body>
+</html>
